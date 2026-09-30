@@ -44,6 +44,6 @@ Author comes from `--author`, `$MDHL_AUTHOR`, or `$INVENTOR_AGENT`. Quotes are m
 ## Build / install
 ```
 npm install
-npx vsce package --allow-missing-repository --skip-license
+npx vsce package
 code --install-extension md-highlighter-0.1.0.vsix
 ```
