@@ -15,6 +15,9 @@ const HELP = `mdhl — Markdown highlights for humans and agents
   mdhl resolve <doc.md> <id>          mdhl reopen <doc.md> <id>
   mdhl delete <doc.md> <id>           (only your own highlights)
   mdhl path <doc.md>                  where the JSON lives
+  mdhl serve [dir] [--port 4747] [--lan] [--no-open]
+                                      read + highlight in a web browser (same highlights as VS Code).
+                                      --lan: also reachable from phone/tablet on your Wi-Fi (link has a secret token)
 
 Options: --author NAME (default $MDHL_AUTHOR / $INVENTOR_AGENT / "Agent"), --root DIR
 Quotes are matched against the doc with Markdown syntax stripped, so you can quote
@@ -143,6 +146,12 @@ switch (cmd) {
     console.log(store.storePath(c.doc, c.root));
     break;
   }
+  case 'serve':
+    require('../lib/server').serve({
+      root: pos[1] || process.cwd(), port: opt.port, lan: !!opt.lan, open: !opt['no-open'],
+      author: opt.author && opt.author !== true ? opt.author : 'You',
+    });
+    break;
   default:
     console.log(HELP);
 }

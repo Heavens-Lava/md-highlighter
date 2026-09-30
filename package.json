@@ -1,8 +1,8 @@
 {
   "name": "md-highlighter",
   "displayName": "Markdown Highlighter",
-  "description": "A Markdown reader for docs your AI agents write: highlight while you read, see what changed since you last read, checklist progress, search, and highlights agents can read and write.",
-  "version": "0.2.0",
+  "description": "A Markdown reader for docs your AI agents write, in VS Code or any browser: highlight while you read, see what changed since you last read, checklist progress, and highlights agents can read and write.",
+  "version": "0.3.0",
   "publisher": "jmacy",
   "license": "MIT",
   "engines": {

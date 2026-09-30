@@ -5,10 +5,9 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const store = require('./lib/store');
-const { render: renderMd } = require('./lib/render');
-const { diffLines } = require('./lib/diff');
+const baseline = require('./lib/baseline');
+const actions = require('./lib/actions');
 
 const panels = new Map(); // doc path -> { panel, disposables }
 let tree;
@@ -27,28 +26,8 @@ function rootFor(doc) {
 
 // --- "what changed since you last read": per-doc snapshot taken when you finish reading ----
 
-let storageDir;
-function baselineFile(doc) {
-  return path.join(storageDir, 'baselines', crypto.createHash('sha1').update(path.resolve(doc).toLowerCase()).digest('hex') + '.json');
-}
-function loadBaseline(doc) {
-  try { return JSON.parse(fs.readFileSync(baselineFile(doc), 'utf8')); } catch { return null; }
-}
-function saveBaseline(doc, text) {
-  const f = baselineFile(doc);
-  fs.mkdirSync(path.dirname(f), { recursive: true });
-  fs.writeFileSync(f, JSON.stringify({ time: new Date().toISOString(), text: text ?? fs.readFileSync(doc, 'utf8') }));
-}
-
 function render(doc, webview) {
-  const source = fs.readFileSync(doc, 'utf8');
-  const base = loadBaseline(doc);
-  const hunks = base && base.text !== source ? diffLines(base.text, source) : [];
-  const out = renderMd(source, {
-    hunks,
-    image: src => webview.asWebviewUri(vscode.Uri.file(path.resolve(path.dirname(doc), decodeURIComponent(src)))).toString(),
-  });
-  return { html: out.html, changes: out.changes, since: base ? base.time : null, words: source.split(/\s+/).length };
+  return actions.view(doc, src => webview.asWebviewUri(vscode.Uri.file(path.resolve(path.dirname(doc), decodeURIComponent(src)))).toString());
 }
 
 function nonce() {
@@ -88,13 +67,6 @@ function shell(webview, ctx, doc) {
 
 function highlightsFor(doc) {
   return store.load(doc, rootFor(doc)).highlights;
-}
-
-function mutate(doc, fn) {
-  const root = rootFor(doc);
-  const data = store.load(doc, root);
-  fn(data);
-  store.save(doc, data, root);
 }
 
 function send(doc, extra = {}) {
@@ -147,33 +119,8 @@ function open(ctx, uri, focusId) {
       case 'scroll':
         ctx.workspaceState.update('scroll:' + doc, msg.y);
         break;
-      case 'add':
-        mutate(doc, d => d.highlights.push({
-          id: store.newId(), quote: msg.quote, prefix: msg.prefix || '', suffix: msg.suffix || '',
-          kind: store.KINDS.includes(msg.kind) ? msg.kind : 'note', note: '', author: author(),
-          created: new Date().toISOString(), status: 'open', replies: [],
-        }));
-        break;
-      case 'note':
-        mutate(doc, d => { const h = d.highlights.find(x => x.id === msg.id); if (h) h.note = msg.note; });
-        break;
-      case 'kind':
-        mutate(doc, d => { const h = d.highlights.find(x => x.id === msg.id); if (h) h.kind = msg.kind; });
-        break;
-      case 'reply':
-        mutate(doc, d => {
-          const h = d.highlights.find(x => x.id === msg.id);
-          if (h) (h.replies = h.replies || []).push({ author: author(), text: msg.text, created: new Date().toISOString() });
-        });
-        break;
-      case 'status':
-        mutate(doc, d => { const h = d.highlights.find(x => x.id === msg.id); if (h) { h.status = msg.status; h.resolvedBy = msg.status === 'resolved' ? author() : undefined; } });
-        break;
-      case 'delete':
-        mutate(doc, d => { d.highlights = d.highlights.filter(x => x.id !== msg.id); });
-        break;
       case 'markRead':
-        saveBaseline(doc);
+        baseline.save(doc);
         send(doc, { keepScroll: true });
         break;
       case 'prefs':
@@ -197,14 +144,14 @@ function open(ctx, uri, focusId) {
         break;
       }
     }
-    if (['add', 'note', 'kind', 'reply', 'status', 'delete'].includes(msg.type)) {
+    if (actions.apply(doc, rootFor(doc), msg, author())) {
       sendHighlights(doc);
       refreshAll();
     }
   }, null, disposables);
 
   panel.onDidDispose(() => {
-    try { saveBaseline(doc); } catch { /* file may have been deleted */ } // you've read this version now
+    try { baseline.save(doc); } catch { /* file may have been deleted */ } // you've read this version now
     disposables.forEach(d => d.dispose());
     panels.delete(doc);
   });
@@ -283,20 +230,6 @@ async function searchHighlights(ctx) {
   if (pick) open(ctx, vscode.Uri.file(pick.doc), pick.id);
 }
 
-function highlightsMarkdown(doc, hs, asTasks) {
-  const LABEL = { note: 'Highlight', question: 'Question', issue: 'Issue', approve: 'Good' };
-  const rel = path.relative(rootFor(doc), doc).split(path.sep).join('/');
-  const lines = [asTasks ? `Please address these highlights I left in \`${rel}\`:` : `# Highlights: ${rel}`, ''];
-  for (const h of hs) {
-    const head = asTasks ? `- [ ] **${LABEL[h.kind]}:** “${h.quote}”` : `- **${LABEL[h.kind]}** — “${h.quote}”`;
-    lines.push(head + (h.author !== author() ? ` _(from ${h.author})_` : ''));
-    if (h.note) lines.push(`  - ${asTasks ? 'My note' : 'Note'}: ${h.note}`);
-    for (const r of h.replies || []) lines.push(`  - ${r.author}: ${r.text}`);
-  }
-  if (asTasks) lines.push('', `(Highlight ids are in .highlights/${rel}.json; reply or resolve them with the mdhl CLI.)`);
-  return lines.join('\n') + '\n';
-}
-
 async function exportHighlights(doc) {
   doc = doc || [...panels.keys()].pop() || vscode.window.activeTextEditor?.document.uri.fsPath;
   if (!doc) return vscode.window.showWarningMessage('Open a Markdown file with highlights first.');
@@ -315,7 +248,7 @@ async function exportHighlights(doc) {
     { label: '$(save) Save as a Markdown file…', id: 'save' },
   ], { placeHolder: `${hs.length} highlight${hs.length === 1 ? '' : 's'}` });
   if (!how) return;
-  const text = highlightsMarkdown(doc, hs, how.id === 'tasks');
+  const text = actions.exportText(doc, rootFor(doc), hs, author(), how.id === 'tasks');
   if (how.id === 'save') {
     const target = await vscode.window.showSaveDialog({ defaultUri: vscode.Uri.file(doc.replace(/\.md$/i, '') + '.highlights.md'), filters: { Markdown: ['md'] } });
     if (target) { fs.writeFileSync(target.fsPath, text); vscode.window.showInformationMessage('Saved ' + path.basename(target.fsPath)); }
@@ -326,7 +259,6 @@ async function exportHighlights(doc) {
 }
 
 function activate(ctx) {
-  storageDir = (ctx.storageUri || ctx.globalStorageUri).fsPath;
   tree = new Tree();
   ctx.subscriptions.push(vscode.window.registerTreeDataProvider('mdHighlighter.tree', tree));
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
