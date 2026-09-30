@@ -1,0 +1,142 @@
+/* Markdown Highlighter reader. Colours follow the active VS Code theme. */
+[hidden] { display: none !important; }
+:root {
+  --bg: var(--vscode-editor-background);
+  --fg: var(--vscode-editor-foreground);
+  --muted: var(--vscode-descriptionForeground);
+  --line: var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+  --side: var(--vscode-sideBar-background, var(--bg));
+  --accent: var(--vscode-focusBorder);
+  --note: rgba(255, 208, 0, 0.38);
+  --question: rgba(64, 156, 255, 0.32);
+  --issue: rgba(255, 82, 82, 0.32);
+  --approve: rgba(64, 200, 110, 0.32);
+  --note-solid: #e8b400;
+  --question-solid: #3d8fe8;
+  --issue-solid: #e04848;
+  --approve-solid: #2fa860;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--fg); }
+body { font-family: var(--vscode-font-family); font-size: 15px; }
+
+/* Layout: sticky side panel, reading column, marker rail on the right. */
+#side {
+  position: fixed; top: 0; left: 0; bottom: 0; width: 270px;
+  background: var(--side); border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; z-index: 5;
+}
+#tabs { display: flex; border-bottom: 1px solid var(--line); }
+#tabs button {
+  flex: 1; background: none; border: 0; color: var(--muted); padding: 10px 6px; cursor: pointer;
+  font: inherit; font-weight: 600; border-bottom: 2px solid transparent;
+}
+#tabs button.on { color: var(--fg); border-bottom-color: var(--accent); }
+#tabs #hlcount:not(:empty) { background: var(--accent); color: var(--bg); border-radius: 9px; padding: 0 6px; font-size: 11px; margin-left: 4px; }
+#toc, #hl { overflow-y: auto; flex: 1; padding: 8px 6px 40px; }
+#toc a {
+  display: block; padding: 4px 8px; border-radius: 4px; cursor: pointer; color: var(--fg);
+  text-decoration: none; line-height: 1.35; opacity: 0.85;
+}
+#toc a:hover { background: var(--vscode-list-hoverBackground); opacity: 1; }
+#toc a.on { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); opacity: 1; }
+#toc a.lvl1 { font-weight: 700; margin-top: 6px; }
+#toc a.lvl2 { padding-left: 16px; }
+#toc a.lvl3 { padding-left: 28px; font-size: 13px; opacity: 0.7; }
+.empty { color: var(--muted); padding: 8px; line-height: 1.5; }
+
+.filters { display: flex; gap: 4px; padding: 2px 2px 8px; }
+.filters button {
+  background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 12px;
+  padding: 2px 10px; cursor: pointer; font: inherit; font-size: 12px;
+}
+.filters button.on { color: var(--fg); border-color: var(--accent); }
+#hl .item {
+  border-left: 4px solid var(--note-solid); padding: 6px 8px; margin: 4px 0; border-radius: 0 4px 4px 0;
+  cursor: pointer; background: rgba(128, 128, 128, 0.07);
+}
+#hl .item:hover { background: var(--vscode-list-hoverBackground); }
+#hl .item.k-question { border-left-color: var(--question-solid); }
+#hl .item.k-issue { border-left-color: var(--issue-solid); }
+#hl .item.k-approve { border-left-color: var(--approve-solid); }
+#hl .item.resolved { opacity: 0.5; }
+#hl .q { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
+#hl .meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
+#hl .n { font-size: 13px; margin-top: 4px; font-style: italic; }
+
+main { margin-left: 270px; margin-right: 18px; }
+#bar {
+  position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 10px;
+  padding: 6px 24px; background: var(--bg); border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted);
+}
+#docname { font-weight: 600; color: var(--fg); }
+#bar button, #agentnote button {
+  background: none; border: 1px solid var(--line); color: var(--fg); border-radius: 4px; padding: 2px 8px; cursor: pointer; font: inherit;
+}
+#agentnote button { border-color: var(--issue-solid); }
+#src { margin-left: auto; }
+
+/* Reading typography */
+#doc { max-width: 860px; margin: 0 auto; padding: 16px 32px 60vh; line-height: 1.65; }
+#doc h1, #doc h2, #doc h3 { line-height: 1.25; scroll-margin-top: 48px; }
+#doc h1 { font-size: 1.9em; border-bottom: 1px solid var(--line); padding-bottom: 0.25em; }
+#doc h2 { font-size: 1.45em; margin-top: 1.8em; border-bottom: 1px solid var(--line); padding-bottom: 0.2em; }
+#doc h3 { font-size: 1.15em; margin-top: 1.4em; }
+#doc a { color: var(--vscode-textLink-foreground); }
+#doc code { font-family: var(--vscode-editor-font-family); font-size: 0.9em; background: rgba(128, 128, 128, 0.15); padding: 1px 4px; border-radius: 3px; }
+#doc pre { background: rgba(128, 128, 128, 0.12); padding: 12px; border-radius: 6px; overflow-x: auto; }
+#doc pre code { background: none; padding: 0; }
+#doc blockquote { border-left: 4px solid var(--line); margin: 1em 0; padding: 0 1em; color: var(--muted); }
+#doc table { border-collapse: collapse; margin: 1em 0; display: block; overflow-x: auto; }
+#doc th, #doc td { border: 1px solid var(--line); padding: 5px 10px; text-align: left; vertical-align: top; }
+#doc img { max-width: 100%; }
+
+/* Highlights */
+mark.hl { color: inherit; background: var(--note); border-radius: 2px; cursor: pointer; padding: 1px 0; }
+mark.hl.k-question { background: var(--question); }
+mark.hl.k-issue { background: var(--issue); }
+mark.hl.k-approve { background: var(--approve); }
+mark.hl.agent { text-decoration: underline dashed; text-underline-offset: 3px; }
+mark.hl.resolved { background: none; text-decoration: underline dotted var(--muted); }
+mark.hl.flash { animation: flash 1.2s ease-out; }
+@keyframes flash { 0%, 30% { outline: 3px solid var(--accent); } 100% { outline: 3px solid transparent; } }
+
+/* Marker rail */
+#rail { position: fixed; top: 34px; right: 0; bottom: 0; width: 14px; border-left: 1px solid var(--line); z-index: 4; }
+#rail .tick { position: absolute; left: 2px; right: 2px; height: 4px; border-radius: 2px; background: var(--note-solid); cursor: pointer; }
+#rail .tick.k-question { background: var(--question-solid); }
+#rail .tick.k-issue { background: var(--issue-solid); }
+#rail .tick.k-approve { background: var(--approve-solid); }
+#rail .tick.agent { box-shadow: 0 0 0 1px var(--fg); }
+
+/* Selection palette + popover */
+#palette {
+  position: fixed; z-index: 20; display: flex; gap: 6px; padding: 6px 8px;
+  background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-editorWidget-border, var(--line));
+  border-radius: 20px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+#palette button, #pop .kinds button { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+.k-note { background: var(--note-solid); } .k-question { background: var(--question-solid); }
+.k-issue { background: var(--issue-solid); } .k-approve { background: var(--approve-solid); }
+#palette button:hover, #pop .kinds button.on { border-color: var(--fg); }
+#pop {
+  position: fixed; z-index: 21; width: 340px; padding: 10px 12px;
+  background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-editorWidget-border, var(--line));
+  border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+#pop .kinds { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+#pop .who { margin-left: auto; color: var(--muted); font-size: 12px; }
+#pop .replies .r { font-size: 13px; margin: 4px 0; line-height: 1.4; }
+#pop textarea {
+  width: 100%; resize: vertical; font: inherit; color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--line)); border-radius: 4px; padding: 6px;
+}
+#pop .actions { display: flex; gap: 6px; margin-top: 8px; }
+#pop .actions button {
+  font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--line); background: none; color: var(--fg);
+}
+#pop .actions .save { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-color: transparent; }
+#pop .actions .del { margin-left: auto; color: var(--issue-solid); }
+
+@media (max-width: 760px) { #side { display: none; } main { margin-left: 0; } }

@@ -1,0 +1,127 @@
+{
+  "name": "md-highlighter",
+  "displayName": "Markdown Highlighter",
+  "description": "Read Markdown rendered, highlight passages with notes, and trade highlights with AI agents. Highlights are plain JSON in .highlights/, anchored by quoted text.",
+  "version": "0.1.0",
+  "publisher": "jmacy",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "bin": {
+    "mdhl": "./bin/mdhl.js"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "mdHighlighter.open",
+        "title": "Open with Highlighter",
+        "category": "Markdown Highlighter",
+        "icon": "$(symbol-color)"
+      },
+      {
+        "command": "mdHighlighter.refresh",
+        "title": "Refresh",
+        "category": "Markdown Highlighter",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "mdHighlighter.toggleResolved",
+        "title": "Show/Hide Resolved",
+        "category": "Markdown Highlighter",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "mdHighlighter.reveal",
+        "title": "Go to Highlight",
+        "category": "Markdown Highlighter"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "mdHighlighter.open",
+          "when": "resourceLangId == markdown",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "mdHighlighter.open",
+          "when": "resourceLangId == markdown",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "mdHighlighter.open",
+          "when": "resourceLangId == markdown"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "mdHighlighter.toggleResolved",
+          "when": "view == mdHighlighter.tree",
+          "group": "navigation"
+        },
+        {
+          "command": "mdHighlighter.refresh",
+          "when": "view == mdHighlighter.tree",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "mdHighlighter.reveal",
+          "when": "false"
+        }
+      ]
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "mdHighlighter.tree",
+          "name": "Highlights"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Markdown Highlighter",
+      "properties": {
+        "mdHighlighter.author": {
+          "type": "string",
+          "default": "You",
+          "description": "Name recorded on highlights you create in the editor."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "markdown-it": "^14.1.0"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.2.0"
+  },
+  "scripts": {
+    "package": "vsce package --allow-missing-repository"
+  },
+  "keywords": [
+    "markdown",
+    "reader",
+    "highlight",
+    "annotation",
+    "ai agents",
+    "notes"
+  ],
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  }
+}
