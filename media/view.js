@@ -10,7 +10,11 @@
   const KIND_LABEL = { note: 'Highlight', question: 'Question', issue: 'Issue', approve: 'Good' };
   const BLOCK = new Set(['P', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'TD', 'TH', 'PRE', 'BLOCKQUOTE', 'DIV', 'DT', 'DD', 'TR']);
 
-  let highlights = [], me = 'You', showResolved = false, filter = 'all';
+  const chgEl = $('#chg');
+  let highlights = [], me = 'You', showResolved = false, filter = 'all', hlQuery = '';
+  let changes = [], since = null, words = 0;
+  let prefs = { size: 15, wide: false, focus: false };
+  let findOpen = false;
   let pendingRange = null;
 
   // --- text index: rendered text <-> DOM positions -------------------------------------------
@@ -157,23 +161,34 @@
     const ab = $('#agentbtn');
     if (ab) ab.onclick = () => { setTab('hl'); filter = 'agents'; buildHighlightList(); };
 
+    const q = hlQuery.toLowerCase();
     const items = vis.filter(h => filter === 'all' || (filter === 'mine' ? h.author === me : h.author !== me))
+      .filter(h => !q || [h.quote, h.note, h.author, ...(h.replies || []).map(r => r.text)].join(' ').toLowerCase().includes(q))
       .map(h => ({ h, el: docEl.querySelector(`mark[data-id="${h.id}"]`) }))
       .sort((a, b) => (a.el ? a.el.getBoundingClientRect().top + scrollY : 1e9) - (b.el ? b.el.getBoundingClientRect().top + scrollY : 1e9));
-    hlEl.innerHTML = '';
-    const bar = document.createElement('div');
-    bar.className = 'filters';
+    // Header (filters, search, export) is built once so typing in the search box keeps focus.
+    let head = hlEl.querySelector('.hlhead'), list = hlEl.querySelector('.hllist');
+    if (!head) {
+      head = document.createElement('div'); head.className = 'hlhead';
+      head.innerHTML = '<div class="filters"></div><div class="hlsearch"><input placeholder="Search highlights & notes" spellcheck="false"><button class="export" title="Copy or save these highlights">Export</button></div>';
+      head.querySelector('input').addEventListener('input', e => { hlQuery = e.target.value; buildHighlightList(); });
+      head.querySelector('.export').onclick = () => vscode.postMessage({ type: 'export' });
+      list = document.createElement('div'); list.className = 'hllist';
+      hlEl.append(head, list);
+    }
+    const bar = head.querySelector('.filters');
+    bar.innerHTML = '';
     for (const [k, label] of [['all', 'All'], ['mine', 'Mine'], ['agents', 'From agents']]) {
       const b = document.createElement('button');
       b.textContent = label; if (filter === k) b.className = 'on';
       b.onclick = () => { filter = k; buildHighlightList(); };
       bar.appendChild(b);
     }
-    hlEl.appendChild(bar);
+    list.innerHTML = '';
     if (!items.length) {
       const p = document.createElement('p'); p.className = 'empty';
-      p.textContent = 'Select any text while reading, then click a colour (or press H) to mark it.';
-      hlEl.appendChild(p);
+      p.textContent = q ? 'No highlights match.' : 'Select any text while reading, then click a colour (or press H) to mark it.';
+      list.appendChild(p);
     }
     for (const { h, el } of items) {
       const d = document.createElement('div');
@@ -184,7 +199,7 @@
       d.querySelector('.meta').textContent = [h.author !== me ? h.author : '', sec, h._orphan ? 'text changed: not found' : '', (h.replies || []).length ? `${h.replies.length} repl${h.replies.length === 1 ? 'y' : 'ies'}` : ''].filter(Boolean).join(' · ');
       if (h.note) d.querySelector('.n').textContent = h.note;
       d.onclick = () => (el ? jump(h.id) : showPop(h, d));
-      hlEl.appendChild(d);
+      list.appendChild(d);
     }
   }
 
@@ -201,7 +216,17 @@
       t.onclick = () => jump(m.dataset.id);
       railEl.appendChild(t);
     });
+    // Changes since last read: thin bars on the rail's left edge.
+    docEl.querySelectorAll('.chg, .chg-removed-before, .chg-removed-after').forEach(el => {
+      const t = document.createElement('div');
+      t.className = 'ctick ' + (el.classList.contains('chg-added') ? 'added' : el.classList.contains('chg-edited') ? 'edited' : 'removed');
+      t.style.top = ((el.getBoundingClientRect().top + scrollY) / H * 100) + '%';
+      t.onclick = () => { el.scrollIntoView({ block: 'center' }); flashEl(el); };
+      railEl.appendChild(t);
+    });
   }
+
+  function flashEl(el) { el.classList.remove('flash-block'); void el.offsetWidth; el.classList.add('flash-block'); }
 
   function jump(id) {
     const m = docEl.querySelector(`mark[data-id="${id}"]`);
@@ -339,11 +364,200 @@
   });
   document.addEventListener('mousedown', e => { if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('mark.hl')) hidePop(); });
 
+  // --- changes since you last read --------------------------------------------------------------------
+  function sinceText() {
+    if (!since) return '';
+    const d = new Date(since), mins = (Date.now() - d) / 60000;
+    if (mins < 60) return `${Math.max(1, Math.round(mins))} min ago`;
+    if (mins < 1440) return `${Math.round(mins / 60)} h ago`;
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function buildChanges() {
+    const n = changes.length;
+    $('#chgcount').textContent = n || '';
+    const note = $('#chgnote');
+    note.innerHTML = '';
+    if (n) {
+      const b = document.createElement('button');
+      b.className = 'chgchip';
+      b.textContent = `${n} change${n === 1 ? '' : 's'} since you last read (${sinceText()})`;
+      b.onclick = () => setTab('chg');
+      note.appendChild(b);
+    }
+    chgEl.innerHTML = '';
+    const head = document.createElement('div');
+    head.className = 'chghead';
+    if (!since) head.innerHTML = '<p class="empty">First visit. From now on, anything that changes in this file (for example an agent\'s edits) is marked here the next time you open it.</p>';
+    else if (!n) head.innerHTML = `<p class="empty">Nothing has changed since you last read this (${sinceText()}).</p>`;
+    else {
+      head.innerHTML = '<p class="empty"></p><button class="markread">Mark all as read</button>';
+      head.querySelector('p').textContent = `Changed since ${sinceText()}. Added text is green, edited text amber, removed text shows as a red line.`;
+      head.querySelector('.markread').onclick = () => vscode.postMessage({ type: 'markRead' });
+    }
+    chgEl.appendChild(head);
+    for (const c of changes) {
+      const el = docEl.querySelector(`[data-chg="${c.id}"]`);
+      if (!el) continue;
+      const d = document.createElement('div');
+      d.className = 'item c-' + c.type;
+      const label = { added: 'Added', edited: 'Edited', removed: 'Removed' }[c.type];
+      const text = c.type === 'removed' ? c.oldText : el.textContent;
+      d.innerHTML = '<div class="q"></div><div class="meta"></div>';
+      d.querySelector('.q').textContent = text.replace(/\s+/g, ' ').trim().slice(0, 160) || '(blank)';
+      d.querySelector('.meta').textContent = [label, sectionOf(el)].filter(Boolean).join(' · ');
+      d.onclick = () => { el.scrollIntoView({ block: 'center' }); flashEl(el); };
+      chgEl.appendChild(d);
+    }
+  }
+
+  // --- checklist progress under each heading ---------------------------------------------------------------
+  function sectionBlocks(h) {  // siblings after heading h until the next heading of the same or higher level
+    const lvl = +h.tagName[1], out = [];
+    for (let el = h.nextElementSibling; el; el = el.nextElementSibling) {
+      if (/^H[1-6]$/.test(el.tagName) && +el.tagName[1] <= lvl) break;
+      out.push(el);
+    }
+    return out;
+  }
+
+  function buildProgress() {
+    docEl.querySelectorAll('.progress-row').forEach(e => e.remove());
+    for (const h of docEl.querySelectorAll('h1, h2, h3')) {
+      const tasks = sectionBlocks(h).flatMap(el => [...el.querySelectorAll('li.task')].concat(el.matches('li.task') ? [el] : []));
+      if (!tasks.length) continue;
+      const c = { done: 0, review: 0, blocked: 0, todo: 0 };
+      tasks.forEach(t => { for (const k in c) if (t.classList.contains('t-' + k)) c[k]++; });
+      const total = tasks.length;
+      const row = document.createElement('div');
+      row.className = 'progress-row';
+      const parts = [`${c.done}/${total} done`];
+      if (c.review) parts.push(`${c.review} awaiting review`);
+      if (c.blocked) parts.push(`${c.blocked} blocked`);
+      row.dataset.label = parts.join(' · ');
+      row.innerHTML = '<div class="pbar"><i class="p-done"></i><i class="p-review"></i><i class="p-blocked"></i></div>';
+      const [a, b, d] = row.querySelectorAll('i');
+      a.style.width = (c.done / total * 100) + '%';
+      b.style.width = (c.review / total * 100) + '%';
+      d.style.width = (c.blocked / total * 100) + '%';
+      h.after(row);
+      if (h._toc) h._toc.dataset.count = `${c.done}/${total}` + (c.blocked ? ' !' : '');
+    }
+  }
+
+  // --- collapsible sections -------------------------------------------------------------------------------------
+  function addCollapsers() {
+    for (const h of docEl.querySelectorAll('h2, h3')) {
+      const b = document.createElement('button');
+      b.className = 'fold';
+      b.title = 'Collapse / expand this section';
+      b.onclick = e => {
+        e.stopPropagation();
+        const closed = h.classList.toggle('folded');
+        sectionBlocks(h).forEach(el => { el.classList.toggle('folded-away', closed); });
+        buildRail();
+      };
+      h.prepend(b);
+    }
+  }
+
+  // --- reading comfort: text size, width, focus, progress + time left -----------------------------------------
+  function applyPrefs() {
+    document.documentElement.style.setProperty('--read-size', prefs.size + 'px');
+    document.body.classList.toggle('wide', !!prefs.wide);
+    document.body.classList.toggle('focus', !!prefs.focus);
+  }
+  function savePrefs() { applyPrefs(); vscode.postMessage({ type: 'prefs', prefs }); requestAnimationFrame(buildRail); }
+  $('#smaller').onclick = () => { prefs.size = Math.max(12, prefs.size - 1); savePrefs(); };
+  $('#bigger').onclick = () => { prefs.size = Math.min(24, prefs.size + 1); savePrefs(); };
+  $('#width').onclick = () => { prefs.wide = !prefs.wide; savePrefs(); };
+  $('#focusbtn').onclick = () => { prefs.focus = !prefs.focus; savePrefs(); };
+
+  function updateProgress() {
+    const max = document.documentElement.scrollHeight - innerHeight;
+    const f = max > 0 ? Math.min(1, scrollY / max) : 1;
+    $('#progress div').style.width = (f * 100) + '%';
+    const left = Math.round(words * (1 - f) / 230);
+    $('#timeleft').textContent = f >= 0.995 ? 'done' : left < 1 ? '< 1 min left' : `${left} min left`;
+  }
+
+  // --- find in document (CSS Custom Highlight API: no DOM changes) ---------------------------------------------
+  let findRanges = [], findIdx = -1;
+  const canHighlight = typeof Highlight !== 'undefined' && CSS.highlights;
+  function openFind() {
+    findOpen = true;
+    $('#find').hidden = false;
+    const q = $('#findq');
+    const sel = getSelection().toString().trim();
+    if (sel && sel.length < 80) q.value = sel;
+    q.focus(); q.select();
+    runFind();
+  }
+  function closeFind() {
+    findOpen = false;
+    $('#find').hidden = true;
+    findRanges = []; findIdx = -1;
+    if (canHighlight) { CSS.highlights.delete('find'); CSS.highlights.delete('find-current'); }
+  }
+  function runFind() {
+    const q = $('#findq').value.toLowerCase();
+    findRanges = []; findIdx = -1;
+    if (q.length >= 2) {
+      const walker = document.createTreeWalker(docEl, NodeFilter.SHOW_TEXT);
+      let n;
+      while ((n = walker.nextNode())) {
+        if (n.parentElement.closest('.folded-away')) continue;
+        const t = n.nodeValue.toLowerCase();
+        for (let i = t.indexOf(q); i >= 0; i = t.indexOf(q, i + q.length)) {
+          const r = new Range(); r.setStart(n, i); r.setEnd(n, i + q.length); findRanges.push(r);
+        }
+      }
+    }
+    if (canHighlight) CSS.highlights.set('find', new Highlight(...findRanges));
+    if (findRanges.length) {  // start from the first match below the current view
+      findIdx = findRanges.findIndex(r => r.getBoundingClientRect().top > 60);
+      if (findIdx < 0) findIdx = 0;
+      showFind(false);
+    } else {
+      $('#findn').textContent = q.length >= 2 ? 'no matches' : '';
+      if (canHighlight) CSS.highlights.delete('find-current');
+    }
+  }
+  function showFind(scroll = true) {
+    const r = findRanges[findIdx];
+    $('#findn').textContent = `${findIdx + 1}/${findRanges.length}`;
+    if (canHighlight) CSS.highlights.set('find-current', new Highlight(r));
+    if (scroll) {
+      const rect = r.getBoundingClientRect();
+      scrollBy({ top: rect.top - innerHeight / 3 });
+    }
+  }
+  function stepFind(d) {
+    if (!findRanges.length) return;
+    findIdx = (findIdx + d + findRanges.length) % findRanges.length;
+    showFind();
+  }
+  $('#findbtn').onclick = openFind;
+  $('#findx').onclick = closeFind;
+  $('#findnext').onclick = () => stepFind(1);
+  $('#findprev').onclick = () => stepFind(-1);
+  $('#findq').addEventListener('input', runFind);
+  $('#findq').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); stepFind(e.shiftKey ? -1 : 1); }
+    if (e.key === 'Escape') { e.preventDefault(); closeFind(); }
+  });
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); openFind(); return; }
+    if (e.target.closest && e.target.closest('textarea, input')) return;
+    if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !selectionInDoc()) { prefs.focus = !prefs.focus; savePrefs(); }
+  });
+
   // --- tabs, scroll memory, wiring ---------------------------------------------------------------------
   function setTab(t) {
     document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
     tocEl.hidden = t !== 'toc';
     hlEl.hidden = t !== 'hl';
+    chgEl.hidden = t !== 'chg';
   }
   document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => setTab(b.dataset.tab));
   $('#src').onclick = () => vscode.postMessage({ type: 'openSource' });
@@ -351,6 +565,7 @@
   let scrollT = 0;
   addEventListener('scroll', () => {
     spy();
+    updateProgress();
     clearTimeout(scrollT);
     scrollT = setTimeout(() => vscode.postMessage({ type: 'scroll', y: scrollY }), 400);
   }, { passive: true });
@@ -361,12 +576,19 @@
     if (m.type === 'render') {
       const y = scrollY;
       me = m.me; showResolved = m.showResolved; highlights = m.highlights;
+      changes = m.changes || []; since = m.since; words = m.words || 0;
+      if (m.prefs) { prefs = Object.assign(prefs, m.prefs); applyPrefs(); }
       docEl.innerHTML = m.html;
+      addCollapsers();
       buildToc();
+      buildProgress();
+      buildChanges();
       applyAll();
+      if (findOpen) runFind();
       if (m.focus) setTimeout(() => jump(m.focus), 50);
       else scrollTo(0, m.keepScroll ? y : (m.scroll || 0));
       spy();
+      updateProgress();
     } else if (m.type === 'highlights') {
       me = m.me; showResolved = m.showResolved; highlights = m.highlights;
       applyAll();

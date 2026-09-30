@@ -140,3 +140,79 @@ mark.hl.flash { animation: flash 1.2s ease-out; }
 #pop .actions .del { margin-left: auto; color: var(--issue-solid); }
 
 @media (max-width: 760px) { #side { display: none; } main { margin-left: 0; } }
+
+/* ---- v0.2: changes, checklists, find, reading comfort ---------------------------------------- */
+:root { --read-size: 15px; --added: #2fa860; --edited: #d69a1f; --removed: #e04848; }
+#doc { font-size: var(--read-size); }
+body.wide #doc { max-width: 1200px; }
+body.focus #side, body.focus #rail { display: none; }
+body.focus main { margin-left: 0; margin-right: 0; }
+#tabs button { font-size: 13px; padding: 10px 4px; }
+#chg { overflow-y: auto; flex: 1; padding: 8px 6px 40px; }
+#chgcount:not(:empty) { background: var(--edited); color: #111; border-radius: 9px; padding: 0 6px; font-size: 11px; margin-left: 4px; }
+
+/* Top bar tools, reading progress, time left */
+#bar { flex-wrap: wrap; }
+#bar .tools { margin-left: auto; display: flex; gap: 4px; }
+#bar .tools #src { margin-left: 6px; }
+#src { margin-left: 0; }
+.chgchip { border-color: var(--edited) !important; }
+#progress { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; }
+#progress div { height: 100%; width: 0; background: var(--accent); transition: width 0.1s linear; }
+#timeleft { position: absolute; right: 24px; bottom: -20px; font-size: 11px; color: var(--muted); pointer-events: none; }
+
+/* Find */
+#find { display: inline-flex; align-items: center; gap: 4px; }
+#findq { font: inherit; width: 200px; padding: 2px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--line)); border-radius: 4px; }
+#findn { min-width: 64px; text-align: center; }
+::highlight(find) { background-color: rgba(255, 150, 50, 0.35); }
+::highlight(find-current) { background-color: rgba(255, 150, 50, 0.95); color: #000; }
+
+/* Highlights tab search + export */
+.hlsearch { display: flex; gap: 4px; padding: 0 2px 8px; }
+.hlsearch input { flex: 1; min-width: 0; font: inherit; font-size: 12px; padding: 3px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--line)); border-radius: 4px; }
+.hlsearch .export, .chghead .markread { font: inherit; font-size: 12px; padding: 3px 8px; border-radius: 4px; cursor: pointer; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: 0; }
+.chghead .markread { margin: 0 8px 8px; }
+
+/* Changed since last read */
+#doc .chg { box-shadow: -10px 0 0 -6px var(--edited); background: rgba(214, 154, 31, 0.08); }
+#doc .chg-added { box-shadow: -10px 0 0 -6px var(--added); background: rgba(47, 168, 96, 0.09); }
+#doc .chg-removed-before { border-top: 2px dashed var(--removed); padding-top: 2px; }
+#doc .chg-removed-after { border-bottom: 2px dashed var(--removed); padding-bottom: 2px; }
+#doc [data-removed]:hover::before { content: 'Removed: ' attr(data-removed); display: block; font-size: 0.85em; color: var(--removed); white-space: pre-wrap; margin-bottom: 4px; }
+#chg .item { border-left: 4px solid var(--edited); padding: 6px 8px; margin: 4px 0; border-radius: 0 4px 4px 0; cursor: pointer; background: rgba(128, 128, 128, 0.07); }
+#chg .item:hover { background: var(--vscode-list-hoverBackground); }
+#chg .item.c-added { border-left-color: var(--added); }
+#chg .item.c-removed { border-left-color: var(--removed); }
+#chg .item.c-removed .q { text-decoration: line-through; opacity: 0.8; }
+#chg .q { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
+#chg .meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
+.flash-block { animation: flashblock 1.4s ease-out; }
+@keyframes flashblock { 0%, 30% { outline: 2px solid var(--accent); outline-offset: 3px; } 100% { outline: 2px solid transparent; } }
+#rail .ctick { position: absolute; left: 0; width: 3px; height: 6px; background: var(--edited); cursor: pointer; }
+#rail .ctick.added { background: var(--added); }
+#rail .ctick.removed { background: var(--removed); }
+
+/* Checklist chips + section progress */
+#doc li.task { list-style: none; margin-left: -1.2em; }
+.task-chip { display: inline-block; width: 1.05em; height: 1.05em; border-radius: 4px; margin-right: 0.5em; vertical-align: -0.15em; border: 2px solid var(--muted); box-sizing: border-box; position: relative; }
+.task-chip[data-state="done"] { background: var(--added); border-color: var(--added); }
+.task-chip[data-state="done"]::after { content: '✓'; position: absolute; inset: -3px 0 0 1px; color: #fff; font-size: 0.8em; font-weight: 700; }
+.task-chip[data-state="review"] { background: var(--edited); border-color: var(--edited); }
+.task-chip[data-state="review"]::after { content: '~'; position: absolute; inset: -4px 0 0 2px; color: #111; font-weight: 700; }
+.task-chip[data-state="blocked"] { background: var(--removed); border-color: var(--removed); }
+.task-chip[data-state="blocked"]::after { content: '!'; position: absolute; inset: -3px 0 0 3px; color: #fff; font-weight: 700; font-size: 0.85em; }
+#doc li.t-done { opacity: 0.75; }
+.progress-row { margin: -0.4em 0 1em; display: flex; align-items: center; gap: 10px; }
+.progress-row::after { content: attr(data-label); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.pbar { flex: 1; max-width: 360px; height: 6px; border-radius: 3px; background: rgba(128, 128, 128, 0.25); display: flex; overflow: hidden; }
+.pbar i { display: block; height: 100%; }
+.p-done { background: var(--added); } .p-review { background: var(--edited); } .p-blocked { background: var(--removed); }
+#toc a[data-count]::after { content: attr(data-count); float: right; font-size: 11px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+
+/* Collapsible sections */
+#doc .fold { background: none; border: 0; cursor: pointer; color: var(--fg); opacity: 0.45; padding: 0; width: 1.4em; margin-left: -1.6em; font-size: 0.75em; vertical-align: 0.15em; }
+#doc .fold:hover, #doc h2.folded .fold, #doc h3.folded .fold { opacity: 1; }
+#doc .fold::before { content: '▾'; }
+#doc h2.folded .fold::before, #doc h3.folded .fold::before { content: '▸'; }
+#doc .folded-away { display: none !important; }

@@ -1,8 +1,8 @@
 {
   "name": "md-highlighter",
   "displayName": "Markdown Highlighter",
-  "description": "Read Markdown rendered, highlight passages with notes, and trade highlights with AI agents. Highlights are plain JSON in .highlights/, anchored by quoted text.",
-  "version": "0.1.0",
+  "description": "A Markdown reader for docs your AI agents write: highlight while you read, see what changed since you last read, checklist progress, search, and highlights agents can read and write.",
+  "version": "0.2.0",
   "publisher": "jmacy",
   "license": "MIT",
   "engines": {
@@ -42,6 +42,18 @@
         "command": "mdHighlighter.reveal",
         "title": "Go to Highlight",
         "category": "Markdown Highlighter"
+      },
+      {
+        "command": "mdHighlighter.search",
+        "title": "Search Highlights",
+        "category": "Markdown Highlighter",
+        "icon": "$(search)"
+      },
+      {
+        "command": "mdHighlighter.export",
+        "title": "Export Highlights…",
+        "category": "Markdown Highlighter",
+        "icon": "$(export)"
       }
     ],
     "menus": {
@@ -66,6 +78,11 @@
         }
       ],
       "view/title": [
+        {
+          "command": "mdHighlighter.search",
+          "when": "view == mdHighlighter.tree",
+          "group": "navigation"
+        },
         {
           "command": "mdHighlighter.toggleResolved",
           "when": "view == mdHighlighter.tree",
@@ -101,7 +118,14 @@
           "description": "Name recorded on highlights you create in the editor."
         }
       }
-    }
+    },
+    "keybindings": [
+      {
+        "command": "mdHighlighter.search",
+        "key": "ctrl+alt+h",
+        "mac": "cmd+alt+h"
+      }
+    ]
   },
   "dependencies": {
     "markdown-it": "^14.1.0"
