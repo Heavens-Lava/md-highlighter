@@ -561,6 +561,7 @@
   }
   document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => setTab(b.dataset.tab));
   $('#src').onclick = () => vscode.postMessage({ type: 'openSource' });
+  if ($('#browser')) $('#browser').onclick = () => vscode.postMessage({ type: 'openBrowser' });
 
   let scrollT = 0;
   addEventListener('scroll', () => {

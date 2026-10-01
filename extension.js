@@ -10,6 +10,7 @@ const baseline = require('./lib/baseline');
 const actions = require('./lib/actions');
 
 const panels = new Map(); // doc path -> { panel, disposables }
+const servers = new Map(); // project root -> Promise<{ server, port }>
 let tree;
 let status;
 let showResolved = false;
@@ -51,7 +52,7 @@ function shell(webview, ctx, doc) {
 </aside>
 <main id="main"><div id="bar"><span id="docname">${path.basename(doc)}</span><span id="agentnote"></span><span id="chgnote"></span>
   <span id="find" hidden><input id="findq" placeholder="Find in document" spellcheck="false"><span id="findn"></span><button id="findprev" title="Previous (Shift+Enter)">↑</button><button id="findnext" title="Next (Enter)">↓</button><button id="findx" title="Close (Esc)">✕</button></span>
-  <span class="tools"><button id="findbtn" title="Find (Ctrl+F)">⌕</button><button id="smaller" title="Smaller text">A−</button><button id="bigger" title="Larger text">A+</button><button id="width" title="Column width">⇔</button><button id="focusbtn" title="Focus mode (F)">◱</button><button id="src" title="Open the source file">Source</button></span>
+  <span class="tools"><button id="findbtn" title="Find (Ctrl+F)">⌕</button><button id="smaller" title="Smaller text">A−</button><button id="bigger" title="Larger text">A+</button><button id="width" title="Column width">⇔</button><button id="focusbtn" title="Focus mode (F)">◱</button><button id="browser" title="Open in web browser">⇱</button><button id="src" title="Open the source file">Source</button></span>
   <div id="progress"><div></div></div><span id="timeleft"></span></div><article id="doc"></article></main>
 <div id="rail"></div>
 <div id="palette" hidden>
@@ -128,6 +129,9 @@ function open(ctx, uri, focusId) {
         break;
       case 'export':
         vscode.commands.executeCommand('mdHighlighter.export', doc);
+        break;
+      case 'openBrowser':
+        openInBrowser(doc);
         break;
       case 'openSource':
         vscode.window.showTextDocument(vscode.Uri.file(doc), { viewColumn: vscode.ViewColumn.Beside });
@@ -207,6 +211,40 @@ function refreshAll() {
   n ? status.show() : status.hide();
 }
 
+// --- open in a web browser (embedded `mdhl serve`) -------------------------------------------------
+
+function startServer(root) {
+  if (servers.has(root)) return servers.get(root);
+  const { serve } = require('./lib/server');
+  const attempt = port => new Promise((ok, fail) => {
+    const server = serve({ root, port, open: false, log: false, author: author(), onListening: () => ok({ server, port }), onError: fail });
+  });
+  const p = (async () => {
+    for (let port = 4747; port < 4767; port++) {
+      try { return await attempt(port); } catch (e) { if (e.code !== 'EADDRINUSE') throw e; }
+    }
+    throw new Error('No free port between 4747 and 4766.');
+  })();
+  servers.set(root, p);
+  p.catch(() => servers.delete(root));
+  return p;
+}
+
+async function openInBrowser(doc) {
+  doc = doc || [...panels.keys()].pop() || vscode.window.activeTextEditor?.document.uri.fsPath;
+  const root = doc ? rootFor(doc) : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!root) return vscode.window.showWarningMessage('Open a folder or a Markdown file first.');
+  try {
+    const { port } = await startServer(root);
+    const rel = doc && doc.toLowerCase().endsWith('.md') ? path.relative(root, doc).split(path.sep).join('/') : '';
+    const url = `http://localhost:${port}/` + (rel ? 'view?doc=' + encodeURIComponent(rel) : '');
+    await vscode.env.openExternal(vscode.Uri.parse(url));
+    status && (status.tooltip = `Markdown Highlighter web reader: http://localhost:${port}/`);
+  } catch (e) {
+    vscode.window.showErrorMessage('Could not start the web reader: ' + (e && e.message || e));
+  }
+}
+
 // --- search + export -----------------------------------------------------------------------------
 
 function everyHighlight() {
@@ -275,6 +313,7 @@ function activate(ctx) {
     }),
     vscode.commands.registerCommand('mdHighlighter.reveal', (doc, id) => open(ctx, vscode.Uri.file(doc), id)),
     vscode.commands.registerCommand('mdHighlighter.search', () => searchHighlights(ctx)),
+    vscode.commands.registerCommand('mdHighlighter.openInBrowser', uri => openInBrowser(uri && uri.fsPath)),
     vscode.commands.registerCommand('mdHighlighter.export', doc => exportHighlights(typeof doc === 'string' ? doc : doc && doc.fsPath)),
   );
 
@@ -289,6 +328,9 @@ function activate(ctx) {
   refreshAll();
 }
 
-function deactivate() {}
+function deactivate() {
+  for (const p of servers.values()) p.then(({ server }) => server.close(), () => {});
+  servers.clear();
+}
 
 module.exports = { activate, deactivate };

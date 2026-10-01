@@ -30,8 +30,10 @@ When you close a document (in VS Code or the browser), Markdown Highlighter reme
 
 ## Read in a web browser
 The same reader runs in any browser, sharing highlights and "last read" state with VS Code and your agents:
+- **From VS Code:** click **⇱** in the reader's toolbar, the globe icon in the editor title bar, or right-click a `.md` file → **Open in Web Browser**. VS Code starts the web reader in the background (port 4747, or the next free one) and opens that document.
+- **From a terminal:**
 ```
-node <path-to>/md-highlighter/bin/mdhl.js serve [folder]      # opens http://localhost:4747
+mdhl serve [folder]      # opens http://localhost:4747 (keep the terminal open; Ctrl+C stops it)
 ```
 - A file list of every `.md` in the folder, with badges for highlights, agent highlights and "updated since you read it". Type to filter.
 - Highlights, notes and "Mark as read" save to the same `.highlights/` files, and edits from VS Code or an agent show up live without refreshing.
@@ -51,6 +53,9 @@ node <path-to>/md-highlighter/bin/mdhl.js <command>
   resolve <doc.md> <id> | reopen <doc.md> <id>
 ```
 Author comes from `--author`, `$MDHL_AUTHOR`, or `$INVENTOR_AGENT`. Quotes are matched with Markdown syntax stripped; keep them short and unique. `add` refuses quotes that aren't in the document.
+
+## Install the `mdhl` command
+From this folder run `npm link` once; then `mdhl` works in any terminal (`mdhl serve`, `mdhl list --open`, …). Without it, use `node <path-to>/md-highlighter/bin/mdhl.js`.
 
 ## Build / install
 ```

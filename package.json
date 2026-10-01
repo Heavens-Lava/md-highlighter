@@ -2,7 +2,7 @@
   "name": "md-highlighter",
   "displayName": "Markdown Highlighter",
   "description": "A Markdown reader for docs your AI agents write, in VS Code or any browser: highlight while you read, see what changed since you last read, checklist progress, and highlights agents can read and write.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "jmacy",
   "license": "MIT",
   "engines": {
@@ -54,6 +54,12 @@
         "title": "Export Highlights…",
         "category": "Markdown Highlighter",
         "icon": "$(export)"
+      },
+      {
+        "command": "mdHighlighter.openInBrowser",
+        "title": "Open in Web Browser",
+        "category": "Markdown Highlighter",
+        "icon": "$(globe)"
       }
     ],
     "menus": {
@@ -62,11 +68,21 @@
           "command": "mdHighlighter.open",
           "when": "resourceLangId == markdown",
           "group": "navigation"
+        },
+        {
+          "command": "mdHighlighter.openInBrowser",
+          "when": "resourceLangId == markdown",
+          "group": "navigation"
         }
       ],
       "explorer/context": [
         {
           "command": "mdHighlighter.open",
+          "when": "resourceLangId == markdown",
+          "group": "navigation"
+        },
+        {
+          "command": "mdHighlighter.openInBrowser",
           "when": "resourceLangId == markdown",
           "group": "navigation"
         }
@@ -90,6 +106,11 @@
         },
         {
           "command": "mdHighlighter.refresh",
+          "when": "view == mdHighlighter.tree",
+          "group": "navigation"
+        },
+        {
+          "command": "mdHighlighter.openInBrowser",
           "when": "view == mdHighlighter.tree",
           "group": "navigation"
         }
@@ -155,5 +176,6 @@
   "homepage": "https://github.com/Heavens-Lava/md-highlighter#readme",
   "bugs": {
     "url": "https://github.com/Heavens-Lava/md-highlighter/issues"
-  }
+  },
+  "author": "Jeffrey Macy"
 }
